@@ -1,0 +1,105 @@
+version: '3.9'
+
+x-common-variables:
+  &common-variables
+  NODE_ENV: $NODE_ENV
+  APP_NAME: $APP_NAME
+  APP_VERSION: $APP_VERSION
+  APP_PORT: $APP_PORT
+  APP_TIMEZONE: $APP_TIMEZONE
+  APP_TZ: $APP_TZ
+
+services:
+
+  labs-action-db:
+    container_name: labs-action-db
+    build:
+      context: ./database
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - db_config:/etc/mysql
+      - db_data:/var/lib/mysql
+    ports:
+      - 3308:$DB_PORT
+    environment:
+      DB_DIALECT: $DB_DIALECT
+      DB_NAME: $DB_NAME
+      DB_PORT: $DB_PORT
+      DB_USER: $DB_USER
+      DB_PASSWORD: $DB_PASSWORD
+      DB_ROOT_PASSWORD: $DB_ROOT_PASSWORD
+      DB_TIMEZONE: $APP_TIMEZONE
+      MYSQL_ROOT_PASSWORD: $MYSQL_ROOT_PASSWORD
+    networks:
+      - labs-action-network
+
+  labs-action-client:
+    container_name: labs-action-client
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/app
+    environment:
+      CHOKIDAR_USEPOLLING: $CHOKIDAR_USEPOLLING
+      PREFLIGHT_CHECK: $PREFLIGHT_CHECK
+      WDS_SOCKET_PORT: $APP_PORT
+      REACT_APP_PATH: $REACT_APP_PATH
+      REACT_APP_API_URL: $REACT_APP_API_URL
+      REACT_APP_API_AUTH: $REACT_APP_API_AUTH
+    stdin_open: true
+    depends_on:
+      - labs-action-api
+    networks:
+      - labs-action-network
+
+  labs-action-api:
+    container_name: labs-action-api
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - /app/node_modules
+      - ./backend:/app
+    environment:
+      <<: *common-variables
+      API_PORT: $API_PORT
+      API_KEY: $API_KEY
+      API_ROUTE_VERSION: $API_ROUTE_VERSION
+      DB_HOST: $DB_HOST
+      DB_DIALECT: $DB_DIALECT
+      DB_NAME: $DB_NAME
+      DB_PORT: $DB_PORT
+      DB_USER: $DB_USER
+      DB_PASSWORD: $DB_PASSWORD
+    depends_on:
+      - labs-action-db
+    networks:
+      - labs-action-network
+
+  labs-action-server:
+    container_name: labs-action-server
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - $APP_PORT:80
+    depends_on:
+      - labs-action-api
+      - labs-action-client
+    networks:
+      - labs-action-network
+
+volumes:
+  db_config:
+  db_data:
+
+
+networks:
+  labs-action-network:
+    name: labs-action-network
+    driver: bridge
